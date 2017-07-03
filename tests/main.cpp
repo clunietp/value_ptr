@@ -21,5 +21,7 @@ BOOST_AUTO_TEST_CASE( test ) {
 #endif
 
 	int* test_leak = new int( 5 );
+	if ( test_leak )
+		BOOST_CHECK( true );
 	BOOST_CHECK( true );
 }
