@@ -24,3 +24,4 @@ matrix:
 script:
   - $CXX -std=c++11 -Wall -I. -c tests/main.cpp -o main.o
   - $CXX main.o -o main.t -lpthread && ./main.t
+  
