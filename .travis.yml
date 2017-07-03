@@ -22,6 +22,7 @@ matrix:
       compiler: clang
 
 script:
+  - $CXX -v
   - $CXX -std=c++11 -Wall -DBOOST_TEST_DYN_LINK -I. -c tests/main.cpp -o main.o -fsanitize=address 
   - $CXX main.o -o main.t -static-libasan -fsanitize=address -lboost_unit_test_framework -lpthread && ./main.t
   
