@@ -10,6 +10,7 @@ addons:
       - gcc-4.9
       - g++-4.9
       - libboost1.55-all-dev
+      - valgrind
 
 matrix:
   include:
@@ -24,5 +25,6 @@ matrix:
 script:
   - $CXX -v
   - $CXX -std=c++11 -Wall -DBOOST_TEST_DYN_LINK -I. -c tests/main.cpp -o main.o -fsanitize=address 
-  - $CXX main.o -o main.t -static-libasan -fsanitize=address -lboost_unit_test_framework -lpthread && ./main.t
+  - $CXX main.o -o main.t -static-libasan -fsanitize=address -lboost_unit_test_framework -lpthread
+  - valgrind --leak-check=yes ./main.t
   
