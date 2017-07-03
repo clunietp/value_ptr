@@ -23,5 +23,5 @@ matrix:
 
 script:
   - $CXX -std=c++11 -Wall -DBOOST_TEST_DYN_LINK -I. -c tests/main.cpp -o main.o
-  - $CXX main.o -o main.t -lpthread && ./main.t
+  - $CXX main.o -o main.t -lboost_unit_test_framework -lpthread && ./main.t
   
