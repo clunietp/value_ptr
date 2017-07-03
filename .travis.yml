@@ -1,0 +1,26 @@
+language: cpp
+dist: trusty
+
+addons:
+  apt:
+    sources:
+      - ubuntu-toolchain-r-test
+      - boost-latest
+    packages:
+      - gcc-4.9
+      - g++-4.9
+      - libboost1.55-all-dev
+
+matrix:
+  include:
+    - os: linux # GCC 5
+      compiler: gcc
+      env: MATRIX_EVAL="CXX=g++-5"
+    - os: linux # GCC 4.8
+      compiler: gcc
+    - os: linux
+      compiler: clang
+
+script:
+  - $CXX -std=c++11 -Wall -I. -c tests/main.cpp -o main.o
+  - $CXX main.o -o main.t -lpthread && ./main.t
