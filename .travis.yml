@@ -26,5 +26,5 @@ script:
   - $CXX -v
   - $CXX -std=c++11 -Wall -DBOOST_TEST_DYN_LINK -I. -c tests/main.cpp -o main.o
   - $CXX main.o -o main.t -lboost_unit_test_framework -lpthread
-  - valgrind --leak-check=yes ./main.t
+  - valgrind --leak-check=yes --error-exitcode=-1 ./main.t
   
