@@ -5,11 +5,9 @@ addons:
   apt:
     sources:
       - ubuntu-toolchain-r-test
-      - boost-latest
     packages:
       - gcc-4.9
       - g++-4.9
-      - libboost1.55-all-dev
       - valgrind
 
 matrix:
@@ -24,7 +22,7 @@ matrix:
 
 script:
   - $CXX -v
-  - $CXX -std=c++11 -Wall -DBOOST_TEST_DYN_LINK -I. -c tests/main.cpp -o main.o
-  - $CXX main.o -o main.t -lboost_unit_test_framework -lpthread
+  - $CXX -std=c++11 -Wall -I. -c tests/main.cpp -o main.o
+  - $CXX main.o -o main.t -lpthread
   - valgrind --leak-check=yes --error-exitcode=1 ./main.t
   

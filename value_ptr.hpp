@@ -1,10 +1,15 @@
 #ifndef _SMART_PTR_VALUE_PTR_
 #define _SMART_PTR_VALUE_PTR_
 
-#include <memory>
-#include <functional>
-#include <cassert>
-#include <stdexcept>	// runtime_error
+#include <memory>		// unique_ptr
+#include <functional>	// less_equal
+#include <cassert>		// assert
+
+#if defined( _MSC_VER)	// todo:  check constexpr/delegating ctor issue in vs17.  issue persists in vs15 update 3 despite ms closed bug as fixed, or i'm doing something wrong
+#define VALUE_PTR_CONSTEXPR 
+#else
+#define VALUE_PTR_CONSTEXPR constexpr 
+#endif
 
 namespace smart_ptr {
 
@@ -14,17 +19,6 @@ namespace smart_ptr {
 		//	from http://en.cppreference.com/w/cpp/types/void_t
 		template<typename... Ts> struct make_void { typedef void type; };
 		template<typename... Ts> using void_t = typename make_void<Ts...>::type;
-
-		// is_derived_from<Base, Derived>
-		//	check Base != Derived && Derived is derived from Base; polymorphic derived not required 
-		template <class Base, class Derived>
-		struct is_derived_from :
-			std::conditional<
-			!std::is_same<Base, Derived>::value && std::is_base_of<Base, Derived>::value
-			, std::true_type
-			, std::false_type
-			>::type
-		{};
 
 		// is_defined<T>, from https://stackoverflow.com/a/39816909/882436
 		template <class, class = void> struct is_defined : std::false_type { };
@@ -53,12 +47,6 @@ namespace smart_ptr {
 		// has_clone
 		template <typename T> using has_clone = detect<T, fn_clone_t>;
 
-		// return_type, from https://stackoverflow.com/a/22863957/882436
-		template <typename T> struct return_type : return_type<decltype( &T::operator() )> {};
-
-		// For generic types, directly use the result of the signature of its 'operator()'
-		template <typename T, typename R, typename... Args> struct return_type<R( T::* )( Args... ) const> { using type = R; };
-
 		// Returns flag if test passes (false==slicing is probable)
 		// T==base pointer, U==derived/supplied pointer
 		template <typename T, typename U, bool IsDefaultCopier>
@@ -82,8 +70,6 @@ namespace smart_ptr {
 			// observer function to call
 			ObserverFnSig observer_fn;
 
-			// op_wrapper() = default;
-
 			template <typename Op_, typename Fn>
 			constexpr op_wrapper( Op_&& op, Fn&& obs )
 				: Op( std::forward<Op_>( op ) )
@@ -105,97 +91,7 @@ namespace smart_ptr {
 			}
 
 		};	// op_wrapper
-
-
-		template <typename T, typename Op>
-		struct delete_wrapper : public Op {
-
-			using this_type = delete_wrapper<T, Op>;
-
-			// observer callback fn; using fn pointer vs std::function to gain size efficiency
-			using observer_fn_type = void( *)( T*, const this_type& );
-
-			observer_fn_type observer_fn;
-
-			delete_wrapper() = default;
-
-			template <typename Op_, typename Fn>
-			constexpr delete_wrapper( Op_&& op, Fn&& obs )
-				: Op( std::forward<Op_>( op ) )
-				, observer_fn( std::forward<Fn>(obs) )
-			{}
-
-			/*
-			delete_wrapper( delete_wrapper&& ) = default;
-			delete_wrapper( const delete_wrapper& ) = default;
-			delete_wrapper& operator=( delete_wrapper&& ) = default;
-
-			delete_wrapper& operator=( const delete_wrapper& that ) {
-				if ( this == &that )
-					return *this;
-				*this = delete_wrapper( static_cast<const Op&>( *this ), this->observer_fn );	// call ctor, move assign
-				return *this;
-			}	// op=
-			*/
-
-			// invoked for delete event
-			void operator()( T* ptr ) const {
-				if ( !ptr )
-					return;	//nothing to do
-
-				assert( this->observer_fn != nullptr );
-
-				//	here we want to notify observer of event, with reference to this
-				//		pointer cannot be deleted in this context due to T still being undefined
-				this->observer_fn( ptr, *this );
-			}
-
-			// call to actual deleter, invoked by observer
-			void operator()( T* ptr, bool ) const {
-				if ( ptr )
-					Op::operator()( ptr );
-			}
-
-		};	// delete_wrapper
-
-		template <typename T, typename Op>
-		struct copy_wrapper : public Op {
-
-			using this_type = copy_wrapper<T, Op>;
-
-			// observer callback fn; using fn pointer vs std::function to gain size efficiency
-			using observer_fn_type = T*( *)( const T*, const this_type& );
-
-			observer_fn_type observer_fn;
-
-			copy_wrapper() = default;
-
-			template <typename Op_, typename Fn>
-			constexpr copy_wrapper( Op_&& op, Fn&& obs )
-				: Op( std::forward<Op_>( op ) )
-				, observer_fn( std::forward<Fn>( obs ) )
-			{}
-
-			// invoked for copy event
-			T* operator()( const T* ptr ) const {
-				if ( !ptr )
-					return nullptr;	// nothing to to
-
-				assert( this->observer_fn != nullptr );
-
-				//	here we want to notify observer of event, with reference to this
-				return this->observer_fn( ptr, *this );
-			}
-
-			// call to actual copy operator, invoked by observer
-			T* operator()( const T* ptr, bool ) const {
-				if ( ptr )
-					return Op::operator()( ptr );
-				return nullptr;
-			}
-
-		};	// copy_wrapper
-
+		
 		// ptr_data
 		template <typename T, typename Deleter, typename Copier>
 			struct
@@ -241,27 +137,64 @@ namespace smart_ptr {
 
 		};	// ptr_data
 
+		// ptr_base:	base class for defined types
+		template <typename T, typename Deleter, typename Copier>
+		struct ptr_base {
 
-		template <typename T, typename DeleteOp, typename CopyOp
-			// , typename Deleter = delete_wrapper<T, DeleteOp>
-			, typename Deleter = op_wrapper<T, DeleteOp, void, void( *)( const void*, T* )>
-			// , typename Copier = copy_wrapper<T, CopyOp>
-			, typename Copier = op_wrapper<T, CopyOp, T*, T*(*)(const void*, const T*)>
-		>
-		struct ptr_base_undefined {
-		private:
-
-		public:
 			using _data_type = ptr_data<T, Deleter, Copier>;
 			using _pointer = typename _data_type::pointer;
 			_data_type _data;
 
 			using pointer = _pointer;
 
+			template <typename Px, typename Dx, typename Cx>
+			constexpr ptr_base( Px&& px, Dx&& dx, Cx&& cx )
+				: _data(
+					std::forward<Px>( px )
+					, std::forward<Dx>( dx )
+					, std::forward<Cx>(cx)
+				)
+			{}
+
+			// conversion to unique_ptr
+			const typename _data_type::base_type_uptr& ptr() const {
+				return this->_data;
+			}
+
+			// conversion to unique_ptr
+			typename _data_type::base_type_uptr& ptr() {
+				return this->_data;
+			}
+			
+			// conversion to unique_ptr
+			operator typename _data_type::base_type_uptr const&() const {
+				return this->_data;
+			}
+
+			// conversion to unique_ptr
+			operator typename _data_type::base_type_uptr& () {
+				return this->_data;
+			}
+			
+
+		};	// ptr_base
+
+		// ptr_base_undefined:	intermediate base class for undefined types
+		template <typename T, typename DeleteOp, typename CopyOp
+			, typename Deleter = op_wrapper<T, DeleteOp, void, void( *)( const void*, T* )>
+			, typename Copier = op_wrapper<T, CopyOp, T*, T*(*)(const void*, const T*)>
+		>
+		struct ptr_base_undefined 
+			: ptr_base<T, Deleter, Copier> {
+
+			using base_type = ptr_base<T,Deleter,Copier>;
+			using pointer = typename base_type::pointer;
+
 			// default construct for undefined type
 			template <typename Dx, typename Cx>
 			constexpr ptr_base_undefined( nullptr_t, Dx&& dx, Cx&& cx )
-				: _data( nullptr
+				: base_type(
+					nullptr
 					, Deleter( std::forward<Dx>( dx ), []( const void*, T* ptr ) { assert( ptr == nullptr ); } )
 					, Copier( std::forward<Cx>( cx ), []( const void* op, const T* ptr ) -> T* { assert( ptr == nullptr ); return nullptr; } )
 				)
@@ -269,25 +202,13 @@ namespace smart_ptr {
 
 			template <typename Dx, typename Cx>
 			constexpr ptr_base_undefined( pointer px, Dx&& dx, Cx&& cx )
-				: _data( px
-					/*
-					, Deleter( std::forward<Dx>( dx ), []( T* ptr, const Deleter& op ) {
-							op( ptr, true );	// call DeleteOp through op
-						}
-					)
-					*/
+				: base_type(
+					px
 					, Deleter( std::forward<Dx>( dx ), []( const void* op, T* ptr ) {
-							// op( ptr, true );	// call DeleteOp through op
 							if ( ptr )
 								static_cast<const Deleter*>( op )->op( ptr );
 						}
 					)
-					/*
-					, Copier( std::forward<Cx>( cx ), []( const T* ptr, const Copier& op ) {
-							return op( ptr, true );	// call CopyOp through op
-						} 
-					)
-					*/
 					, Copier( std::forward<Cx>( cx ), []( const void* op, const T* ptr ) -> T* {
 							if ( !ptr )
 								return nullptr;
@@ -296,10 +217,6 @@ namespace smart_ptr {
 					)
 				)
 			{}
-
-			// const _data_type& data() const { return this->_data; }
-			// _data_type& data() { return this->_data; }
-
 		};	// ptr_base_undefined
 
 	}	// detail
@@ -334,31 +251,21 @@ namespace smart_ptr {
 	};	// default_copy
 
 	template <typename T
-		, typename Deleter = std::default_delete<T> // typename std::conditional<detail::is_defined<T>::value, default_delete<T>, default_delete_undefined<T>>::type
+		, typename Deleter = std::default_delete<T>
 		, typename Copier = default_copy<T>
-		, typename Base = detail::ptr_base_undefined<T, Deleter, Copier>
+		, typename Base = 
+			typename std::conditional<detail::is_defined<T>::value, 
+				detail::ptr_base<T, Deleter, Copier>
+				, detail::ptr_base_undefined<T, Deleter, Copier>
+			>::type
 	>
 		struct value_ptr 
 			: Base
 		{
-		private:
-			
-			using _base_type = Base;
-			using _pointer = typename _base_type::pointer;
-			using _element_type = T;
-			// static constexpr bool _is_defined() { return std::conditional<detail::is_defined<T>::value, std::true_type, std::false_type>::value; }
-			// using _is_defined_type = typename std::conditional<detail::is_defined<T>::value, std::true_type, std::false_type>::type;
+			using base_type = Base;
+			using element_type = T;
 
-			void _delete( T* what ) {
-				if ( what )
-					this->get_deleter()( what );
-			}	// _delete
-			// _data_type _data;
-
-		public:
-			using element_type = _element_type;
-
-			using pointer = _pointer;
+			using pointer = typename base_type::pointer;
 			using const_pointer = const pointer;
 			
 			using reference = typename std::add_lvalue_reference<element_type>::type;
@@ -367,12 +274,10 @@ namespace smart_ptr {
 			using deleter_type = Deleter;
 			using copier_type = Copier;
 			
-			// value_ptr() = default;
-			
 			// construct with pointer, deleter, copier
 			template <typename Px>
 			constexpr value_ptr( Px px, deleter_type dx, copier_type cx )
-				: _base_type( px
+				: base_type( px
 					, std::move( dx )
 					, std::move( cx )
 				)
@@ -385,18 +290,18 @@ namespace smart_ptr {
 
 			// construct with pointer, deleter
 			template <typename Px>
-			value_ptr( Px px, deleter_type dx )	// constexpr here yields c2476 on msvc15
+			VALUE_PTR_CONSTEXPR value_ptr( Px px, deleter_type dx )	// constexpr here yields c2476 on msvc15
 				: value_ptr( px, std::move(dx), copier_type() )
 			{}
 
 			// construct with pointer
 			template <typename Px>
-			value_ptr( Px px ) // constexpr here yields c2476 on msvc15
+			VALUE_PTR_CONSTEXPR value_ptr( Px px ) // constexpr here yields c2476 on msvc15
 				: value_ptr( px, deleter_type(), copier_type() )
 			{}
 
-			// nullptr_t
-			explicit value_ptr( std::nullptr_t =nullptr )	// constexpr here yields c2476 on msvc15
+			// nullptr_t, default ctor 
+			explicit VALUE_PTR_CONSTEXPR value_ptr( std::nullptr_t = nullptr )	// constexpr here yields c2476 on msvc15
 				: value_ptr( nullptr, deleter_type(), copier_type() )
 			{}
 			
@@ -416,8 +321,6 @@ namespace smart_ptr {
 					);
 
 				*this = value_ptr( px, this->get_deleter(), this->get_copier() );
-
-				// this->_data.reset( px );
 			}
 
 			// release pointer
@@ -483,5 +386,8 @@ namespace smart_ptr {
 	}	// make_value_ptr
 
 }	// smart_ptr ns
+
+#undef VALUE_PTR_CONSTEXPR
+
 #endif // !_SMART_PTR_VALUE_PTR_
 

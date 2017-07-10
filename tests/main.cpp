@@ -13,10 +13,6 @@
 #include "../value_ptr.hpp"
 #include "test-pimpl.hpp"
 
-// todo:  
-//	base ptr type for complete types, so that sizeof(value_ptr<Complete>==sizeof(Complete*))
-//	cleanup
-
 namespace {
 	using namespace smart_ptr;
 	struct A { int foo; };
@@ -41,14 +37,12 @@ void basic_tests() {
 	struct MyDeleterStateful : MyDeleter { int* ptr; };
 	struct MyCopierStateful : MyCopier { int* ptr; };
 
-	// static asserts
-	/*
+	// defined type size checks
 	static_assert( sizeof( value_ptr<A> ) == sizeof( A* ), "Size check fail" );
+	static_assert( sizeof( value_ptr<A, MyDeleter, MyCopier> ) == sizeof( A* ), "Size check fail" );
 	static_assert( sizeof( value_ptr<A> ) == sizeof( std::unique_ptr<A> ), "Size check fail" );
 	static_assert( sizeof( value_ptr<A, MyDeleter> ) == sizeof( std::unique_ptr<A,MyDeleter> ), "Size check fail" );
-	static_assert( sizeof( value_ptr<A, MyDeleter, MyCopier> ) == 8, "Size check fail" );
 	static_assert( sizeof( value_ptr<A, MyDeleterStateful> ) == sizeof( std::unique_ptr<A, MyDeleterStateful> ), "Size check fail" );
-	*/
 
 	// construct, assign value_ptr, basic ops
 	{
@@ -214,6 +208,15 @@ void lambda_copier_tests() {
 
 void undefined_tests() {
 
+	// undefined type size checks
+	//	undefined size == pointer + 2 function pointers
+	{
+		struct U;
+		static constexpr auto fn_ptr_size = sizeof( void( *)( ) );	// get function pointer size
+		static_assert( sizeof( value_ptr<U> ) == sizeof( A* ) + fn_ptr_size * 2, "Size check fail" );
+		static_assert( sizeof( value_ptr<U> ) == sizeof( std::unique_ptr<A> ) + fn_ptr_size * 2, "Size check fail" );
+	}
+
 	// basic undefined class
 	{
 		struct U;	// undefined
@@ -233,7 +236,7 @@ void undefined_tests() {
 		assert( w.pImpl_custom.get_copier().counter == 0 );	// no copies done
 
 		auto w2 = w;	// copy undefined
-		assert( w.pImpl_custom.get_copier().counter == 1 );	// check custom copier count of w.  todo:  custom deleter count
+		assert( w.pImpl_custom.get_copier().counter == 1 );	// check custom copier count of w.  todo:  check custom deleter count
 
 		assert( w2.get_meaning_of_life() == 42 );
 		assert( w2.get_meaning_of_life_derived() == 420 );
@@ -289,8 +292,6 @@ void deleter_tests() {
 		// default construct with MyDeleterTest
 		value_ptr<A, MyDeleterTest> default_{};
 		assert( !default_ );
-
-
 	}
 }
 
@@ -409,6 +410,17 @@ void slice_protection() {
 	// value_ptr<Base> a{ new Derived(1,2) };	// expected: compilation failure
 }
 
+void unique_ptr_tests() {
+
+	// test implicit conversion to unique_ptr
+	{
+		auto test = []( const std::unique_ptr<A>& ptr, int val ) { return ptr->foo == val; };
+		value_ptr<A> a{ new A{ 55 } };
+		assert( test( a, 55 ) );	// implicit conversion
+		assert( test( a.ptr(), 55 ) );	// ptr convenience method
+	}
+}
+
 int main() {
 
 #ifdef _WIN32
@@ -428,8 +440,7 @@ int main() {
 	clone_tests();
 	slice_protection();
 	undefined_tests();
-	
-	
+	unique_ptr_tests();
 
 	std::cout << "All tests passed";
 	return 0;

@@ -62,8 +62,10 @@ widget::impl* widget::impl_copier::operator()( const impl* ptr ) const {
 widget::widget()
 	: pImpl{ new widget::impl{ 42 } }
 	, pImpl_derived{ new impl_derived{ 42, 10 } }
-	, pImpl_custom{ new widget::impl{33}}
-{}
+	, pImpl_custom{ nullptr }
+{
+	this->pImpl_custom.reset( new widget::impl{ 33 } );	// test reset method
+}
 
 // pimpl widget method
 int widget::get_meaning_of_life() const {
