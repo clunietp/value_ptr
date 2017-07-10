@@ -243,3 +243,6 @@ ModelManifest.xml
 /tests/tests
 /tests/msvc
 *.o
+/tests/foo.exe.stackdump
+/tests/foo.exe
+/value_ptr.old.hpp
