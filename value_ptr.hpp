@@ -1,3 +1,7 @@
+
+// Distributed under the Boost Software License, Version 1.0.
+//    (See http://www.boost.org/LICENSE_1_0.txt)
+
 #ifndef _SMART_PTR_VALUE_PTR_
 #define _SMART_PTR_VALUE_PTR_
 
@@ -20,7 +24,7 @@ namespace smart_ptr {
 		template<typename... Ts> struct make_void { typedef void type; };
 		template<typename... Ts> using void_t = typename make_void<Ts...>::type;
 
-		// is_defined<T>, from https://stackoverflow.com/a/39816909/882436
+		// is_defined<T>, from https://stackoverflow.com/a/39816909
 		template <class, class = void> struct is_defined : std::false_type { };
 		template <class T> struct is_defined<
 			T
@@ -30,7 +34,7 @@ namespace smart_ptr {
 		;
 
 		// Class function/type detection
-		//	https://stackoverflow.com/a/30848101/882436
+		//	https://stackoverflow.com/a/30848101
 
 		// Primary template handles all types not supporting the operation.
 		template <typename, template <typename> class, typename = void_t<>>
