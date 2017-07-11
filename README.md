@@ -85,6 +85,7 @@ Features
     -  Static assertion prevents object slicing if a user-defined copier not provided or clone member not found
 - Support for stateful and stateless deleters and copiers, via functors or lambdas
 - Unit tested, valgrind clean
+- Permissive license (Boost)
 
 Dependencies/Requirements
 ------------
