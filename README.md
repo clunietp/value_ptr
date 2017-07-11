@@ -105,7 +105,7 @@ Tested compilers:
 - G++ 4.8, G++ 5
 - Clang 3.5
 
-Running Tests
+Unit Tests ![Travis CI](https://travis-ci.org/trent33/value_ptr.svg?branch=master)
 -------------
 - Compile and run the files in the 'tests' directory
 
