@@ -13,7 +13,7 @@ value_ptr aims to address the following issues by reducing/eliminating the boile
 
 Without value_ptr:
 
-    struct Base { Base* clone() const; base stuff... };  
+    struct Base { virtual Base* clone() const; base stuff... };  
     struct Derived : Base { Base* clone() const; derived stuff... };
     
     struct MyAwesomeClass {
@@ -29,7 +29,7 @@ Without value_ptr:
 With value_ptr:
 
     #include "value_ptr.hpp"
-    struct Base { Base* clone() const; base stuff... };  
+    struct Base { virtual Base* clone() const; base stuff... };  
     struct Derived : Base { Base* clone() const; derived stuff... };
     
     struct MyAwesomeClass {
