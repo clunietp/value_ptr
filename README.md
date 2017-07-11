@@ -77,7 +77,8 @@ Features
 - Header only, single file, cross platform, no dependencies outside the STL
 - Compatible interface/convertible to std::unique_ptr<T>
 - Space efficient:  
-    -  defined types:  sizeof( value_ptr<T> ) == sizeof(T*)
+    -  Utilizes empty base optimization to minimize memory footprint
+    -  defined types:  sizeof( value_ptr<T> ) == sizeof(T*) == sizeof(std::unique_ptr<T>)
     -  undefined types:  sizeof( value_ptr<T> ) == sizeof(T*) + two function pointers
 - Polymorphic copying:  
     -  Automatically detects/utilizes clone() member function
