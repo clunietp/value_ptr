@@ -52,7 +52,7 @@ namespace smart_ptr {
 		template <typename T, typename U, bool IsDefaultCopier>
 		struct slice_test : std::conditional<
 			std::is_same<T, U>::value	// if U==T, no need to check for slicing
-			|| std::is_same<nullptr_t, U>::value	// nullptr is fine
+			|| std::is_same<std::nullptr_t, U>::value	// nullptr is fine
 			|| !IsDefaultCopier	// user provided cloner, assume they're handling it
 			|| has_clone<typename std::remove_pointer<U>::type>::value	// using default cloner, clone method must exist in U
 			, std::true_type
@@ -192,7 +192,7 @@ namespace smart_ptr {
 
 			// default construct for undefined type
 			template <typename Dx, typename Cx>
-			constexpr ptr_base_undefined( nullptr_t, Dx&& dx, Cx&& cx )
+			constexpr ptr_base_undefined( std::nullptr_t, Dx&& dx, Cx&& cx )
 				: base_type(
 					nullptr
 					, Deleter( std::forward<Dx>( dx ), []( const void*, T* ptr ) { assert( ptr == nullptr ); } )
@@ -300,7 +300,7 @@ namespace smart_ptr {
 				: value_ptr( px, deleter_type(), copier_type() )
 			{}
 
-			// nullptr_t, default ctor 
+			// std::nullptr_t, default ctor 
 			explicit VALUE_PTR_CONSTEXPR value_ptr( std::nullptr_t = nullptr )	// constexpr here yields c2476 on msvc15
 				: value_ptr( nullptr, deleter_type(), copier_type() )
 			{}
@@ -362,18 +362,18 @@ namespace smart_ptr {
 	template<class T1, class D1, class C1, class T2, class D2, class C2> bool operator <= ( const value_ptr<T1, D1, C1>& x, const value_ptr<T2, D2, C2>& y ) { return !( y < x ); }
 	template<class T1, class D1, class C1, class T2, class D2, class C2> bool operator >( const value_ptr<T1, D1, C1>& x, const value_ptr<T2, D2, C2>& y ) { return y < x; }
 	template<class T1, class D1, class C1, class T2, class D2, class C2> bool operator >= ( const value_ptr<T1, D1, C1>& x, const value_ptr<T2, D2, C2>& y ) { return !( x < y ); }
-	template <class T, class D, class C> bool operator == ( const value_ptr<T, D, C>& x, nullptr_t ) noexcept { return !x; }
-	template <class T, class D, class C> bool operator == ( nullptr_t, const value_ptr<T, D, C>& x ) noexcept { return !x; }
-	template <class T, class D, class C> bool operator != ( const value_ptr<T, D, C>& x, nullptr_t ) noexcept { return (bool)x; }
-	template <class T, class D, class C> bool operator != ( nullptr_t, const value_ptr<T, D, C>& x ) noexcept { return (bool)x; }
-	template <class T, class D, class C> bool operator < ( const value_ptr<T, D, C>& x, nullptr_t ) { return std::less<typename value_ptr<T, D, C>::pointer>()( x.get(), nullptr ); }
-	template <class T, class D, class C> bool operator<( nullptr_t, const value_ptr<T, D, C>& y ) { return std::less<typename value_ptr<T, D, C>::pointer>()( nullptr, y.get() ); }
-	template <class T, class D, class C> bool operator <= ( const value_ptr<T, D, C>& x, nullptr_t ) { return std::less_equal<typename value_ptr<T, D, C>::pointer>()( x.get(), nullptr ); }
-	template <class T, class D, class C> bool operator <= ( nullptr_t, const value_ptr<T, D, C>& y ) { return std::less_equal<typename value_ptr<T, D, C>::pointer>()( nullptr, y.get() ); }
-	template <class T, class D, class C> bool operator >( const value_ptr<T, D, C>& x, nullptr_t ) { return !( nullptr < x ); }
-	template <class T, class D, class C> bool operator > ( nullptr_t, const value_ptr<T, D, C>& y ) { return !( y < nullptr ); }
-	template <class T, class D, class C> bool operator >= ( const value_ptr<T, D, C>& x, nullptr_t ) { return !( x < nullptr ); }
-	template <class T, class D, class C> bool operator >= ( nullptr_t, const value_ptr<T, D, C>& y ) { return !( nullptr < y ); }
+	template <class T, class D, class C> bool operator == ( const value_ptr<T, D, C>& x, std::nullptr_t ) noexcept { return !x; }
+	template <class T, class D, class C> bool operator == ( std::nullptr_t, const value_ptr<T, D, C>& x ) noexcept { return !x; }
+	template <class T, class D, class C> bool operator != ( const value_ptr<T, D, C>& x, std::nullptr_t ) noexcept { return (bool)x; }
+	template <class T, class D, class C> bool operator != ( std::nullptr_t, const value_ptr<T, D, C>& x ) noexcept { return (bool)x; }
+	template <class T, class D, class C> bool operator < ( const value_ptr<T, D, C>& x, std::nullptr_t ) { return std::less<typename value_ptr<T, D, C>::pointer>()( x.get(), nullptr ); }
+	template <class T, class D, class C> bool operator<( std::nullptr_t, const value_ptr<T, D, C>& y ) { return std::less<typename value_ptr<T, D, C>::pointer>()( nullptr, y.get() ); }
+	template <class T, class D, class C> bool operator <= ( const value_ptr<T, D, C>& x, std::nullptr_t ) { return std::less_equal<typename value_ptr<T, D, C>::pointer>()( x.get(), nullptr ); }
+	template <class T, class D, class C> bool operator <= ( std::nullptr_t, const value_ptr<T, D, C>& y ) { return std::less_equal<typename value_ptr<T, D, C>::pointer>()( nullptr, y.get() ); }
+	template <class T, class D, class C> bool operator >( const value_ptr<T, D, C>& x, std::nullptr_t ) { return !( nullptr < x ); }
+	template <class T, class D, class C> bool operator > ( std::nullptr_t, const value_ptr<T, D, C>& y ) { return !( y < nullptr ); }
+	template <class T, class D, class C> bool operator >= ( const value_ptr<T, D, C>& x, std::nullptr_t ) { return !( x < nullptr ); }
+	template <class T, class D, class C> bool operator >= ( std::nullptr_t, const value_ptr<T, D, C>& y ) { return !( nullptr < y ); }
 
 	template <typename T, typename Deleter>
 	static inline auto make_value_ptr( T* ptr, Deleter&& dx ) -> value_ptr<T, Deleter> {

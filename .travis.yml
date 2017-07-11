@@ -22,7 +22,6 @@ matrix:
 
 script:
   - $CXX -v
-  - $CXX -std=c++11 -Wall -I. -c tests/main.cpp -o main.o
-  - $CXX main.o -o main.t -lpthread
+  - $CXX -std=c++11 -Wall -I. tests/main.cpp tests/test-pimpl.cpp -o main.t && ./main.t
   - valgrind --leak-check=yes --error-exitcode=1 ./main.t
   
