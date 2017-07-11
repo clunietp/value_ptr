@@ -13,8 +13,8 @@ value_ptr aims to address the following issues by reducing/eliminating the boile
 
 Without value_ptr:
 
-    struct Base { virtual Base* clone() const; base stuff... };  
-    struct Derived : Base { Base* clone() const; derived stuff... };
+    struct Base { virtual Base* clone() const { return new Base(*this); } };  
+    struct Derived : Base { Base* clone() const { return new Derived(*this); };
     
     struct MyAwesomeClass {
         std::unique_ptr<Base> foo;
@@ -29,8 +29,8 @@ Without value_ptr:
 With value_ptr:
 
     #include "value_ptr.hpp"
-    struct Base { virtual Base* clone() const; base stuff... };  
-    struct Derived : Base { Base* clone() const; derived stuff... };
+    struct Base { virtual Base* clone() const { return new Base(*this); } };  
+    struct Derived : Base { Base* clone() const { return new Derived(*this); };
     
     struct MyAwesomeClass {
         smart_ptr::value_ptr<Base> foo;
@@ -51,7 +51,7 @@ This problem is often seen in the PIMPL idiom and often associated with forward 
 
 Without value_ptr
 
-    struct U;	// undefined type
+    struct U;	// undefined type, defined in another file somewhere that we can't/don't want to include
     class MyAwesomeClass {
         std::unique_ptr<U> u; // unique_ptr doesn't really fit, but we don't want to manage a raw pointer either.
     };
@@ -69,7 +69,7 @@ with value_ptr:
     MyAwesomeClass a{};
     auto b = a;	// no problem!
 
-For a full working PIMPL example, see tests/test-pimpl.cpp
+For a working PIMPL example, see tests/test-pimpl.cpp
 
 
 Features
