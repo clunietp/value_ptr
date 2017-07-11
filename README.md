@@ -100,9 +100,9 @@ For additional examples/usage, see the unit tests in tests/main.cpp
 
 Tested compilers:
 ------------
-- MSVC 2015 Update 2 or later
+- MSVC 2015 Update 3
 - G++ 4.8, G++ 5
-- Clang X.X
+- Clang 3.5
 
 Running Tests
 -------------
