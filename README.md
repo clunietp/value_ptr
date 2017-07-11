@@ -5,7 +5,7 @@ https://github.com/trent33/value_ptr
 Introduction
 ------------
 value_ptr is a C++11 header only, deep-copying smart pointer that preserves value semantics for both polymorphic and undefined types.  
-value_ptr aims to address the following issues by reducing/eliminating the boilerplate needed to facilitate value semantics.
+value_ptr aims to address the following issues by reducing/eliminating the boilerplate needed to facilitate value semantics:  The polymorphic copy problem, and the undefined type problem.
 
 - The polymorphic copy problem.  Given a class heirarchy, preserve value semantics while preventing object slicing.
 
