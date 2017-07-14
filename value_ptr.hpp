@@ -2,8 +2,8 @@
 // Distributed under the Boost Software License, Version 1.0.
 //    (See http://www.boost.org/LICENSE_1_0.txt)
 
-#ifndef _SMART_PTR_VALUE_PTR_
-#define _SMART_PTR_VALUE_PTR_
+#ifndef SMART_PTR_VALUE_PTR
+#define SMART_PTR_VALUE_PTR
 
 #include <memory>		// unique_ptr
 #include <functional>	// less_equal
@@ -393,5 +393,5 @@ namespace smart_ptr {
 
 #undef VALUE_PTR_CONSTEXPR
 
-#endif // !_SMART_PTR_VALUE_PTR_
+#endif // !SMART_PTR_VALUE_PTR
 
