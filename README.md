@@ -78,8 +78,8 @@ Features
 - Compatible interface/convertible to std::unique_ptr<T>
 - Space efficient:  
     -  Utilizes empty base optimization to minimize memory footprint
-    -  defined types:  sizeof( value_ptr<T> ) == sizeof(T*) == sizeof(std::unique_ptr<T>)
-    -  undefined types:  sizeof( value_ptr<T> ) == sizeof(T*) + two function pointers
+    -  defined types:  `sizeof( value_ptr<T> ) == sizeof(T*) == sizeof(std::unique_ptr<T>)`
+    -  undefined types:  `sizeof( value_ptr<T> ) == sizeof(T*)` + two function pointers
 - Polymorphic copying:  
     -  Automatically detects/utilizes clone() member function
     -  Static assertion prevents object slicing if a user-defined copier not provided or clone member not found
@@ -100,6 +100,10 @@ Usage
 
 For additional examples/usage, see the unit tests in tests/main.cpp
 
+Known limitations:
+------------
+- Support for arrays (a la unique_ptr) is not currently implemented
+
 Tested compilers:
 ------------
 - MSVC 2015 Update 3
@@ -110,5 +114,8 @@ Unit Tests ![Travis CI](https://travis-ci.org/trent33/value_ptr.svg?branch=maste
 -------------
 - Compile and run the files in the 'tests' directory
 
+Acknowledgements
+---------
+http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2012/n3339.pdf , A Preliminary Proposal for a Deep-Copying Smart Pointer by Walter E Brown
 
 Issues/pull requests welcome
