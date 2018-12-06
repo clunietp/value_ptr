@@ -15,7 +15,7 @@
 
 namespace {
 	using namespace smart_ptr;
-	struct A { int foo; };
+	struct A { int foo; A() = default; A(int foo_) : foo(foo_) {} };
 }
 
 void basic_tests() {
@@ -69,10 +69,11 @@ void basic_tests() {
 		delete d_ptr;
 	}
 
-	// nullptr_t construct/assign
+	// make_value, nullptr_t construct/assign
 	{
-		value_ptr<A> a{ new A{ 21 } };
+		auto a = smart_ptr::make_value<A>(21);
 		assert( a );
+		assert(a->foo == 21);
 		a = nullptr;	// nullptr assign
 		assert( !a );
 		value_ptr<A> b{ nullptr };	// nullptr construct
@@ -113,6 +114,15 @@ void operator_tests() {
 	assert( ( x >= y ) == !expected_less );
 }
 
+static bool copier_called = false;
+struct MyCopierTest {
+	int baz;
+	A* operator()(const A* ptr) const {
+		copier_called = true;
+		return new A(*ptr);
+	}
+};	// MyCopierTest
+
 void copier_tests() {
 
 	// default copy of non-polymorphic object
@@ -124,14 +134,7 @@ void copier_tests() {
 	}
 
 	{
-		static bool copier_called = false;
-		struct MyCopierTest {
-			int baz;
-			A* operator()( const A* ptr ) const {
-				copier_called = true;
-				return new A( *ptr );
-			}
-		};	// MyCopierTest
+		
 
 		{	// default deleter, user-provided copier
 			value_ptr<A, value_ptr<A>::deleter_type, MyCopierTest> p{ new A{ 5 },{},{ 2 } };
@@ -191,7 +194,7 @@ void lambda_copier_tests() {
 			, []( const A* ptr ) -> A* { auto result = new A( *ptr ); result->foo++; return result; }	// copy, increment by one
 		);
 		assert( p->foo == 5 );
-		auto p2 = p;		// execute ocpy
+		auto p2 = p;		// execute copy
 		assert( p2->foo == p->foo + 1 );	// check for increment to verify
 	}
 
@@ -206,36 +209,37 @@ void lambda_copier_tests() {
 	}
 }
 
-void undefined_tests() {
+void incomplete_tests() {
 
-	// undefined type size checks
-	//	undefined size == pointer + 2 function pointers
+	// incomplete type size checks
+	//	incomplete size == pointer + 2 function pointers
 	{
 		struct U;
 		static constexpr auto fn_ptr_size = sizeof( void( *)( ) );	// get function pointer size
-		static_assert( sizeof( value_ptr<U> ) == sizeof( A* ) + fn_ptr_size * 2, "Size check fail" );
-		static_assert( sizeof( value_ptr<U> ) == sizeof( std::unique_ptr<A> ) + fn_ptr_size * 2, "Size check fail" );
+
+		static_assert( sizeof( value_ptr<U> ) == sizeof( A* ) + fn_ptr_size * 2, "incomplete size check fail" );
+		static_assert( sizeof( value_ptr<U> ) == sizeof( std::unique_ptr<A> ) + fn_ptr_size * 2, "incomplete size check fail" );
 	}
 
 	// basic undefined class
 	{
-		struct U;	// undefined
+		struct U;	// incomplete
 		value_ptr<U> u{};
 		assert( !u );
-		auto u2 = u;	// copy with undefined
+		auto u2 = u;	// copy with incomplete
 		assert( !u2 );
 	}
 
 	// pimpl example using test-pimpl
 	{
 		widget w{};
-		assert( w.pImpl );	// validate construction of undefined
+		assert( w.pImpl );	// validate construction of incomplete
 		assert( w.pImpl_derived );
 		assert( w.get_meaning_of_life() == 42 );
 		assert( w.get_meaning_of_life_derived() == 420 );
 		assert( w.pImpl_custom.get_copier().counter == 0 );	// no copies done
 
-		auto w2 = w;	// copy undefined
+		auto w2 = w;	// copy incomplete
 		assert( w.pImpl_custom.get_copier().counter == 1 );	// check custom copier count of w.  todo:  check custom deleter count
 
 		assert( w2.get_meaning_of_life() == 42 );
@@ -253,7 +257,7 @@ void undefined_tests() {
 		assert( w3.is_clone_derived() );	// state should have been carried over from w2
 	}
 
-}	// undefined_tests
+}	// incomplete
 
 void deleter_tests() {
 
@@ -324,12 +328,12 @@ void lambda_deleter_tests() {
 		
 	}
 
-	// stateful lambda deleter with make_value_ptr
+	// stateful lambda deleter
 	{
 		
 		int counter = 0;
 		{
-		auto p = make_value_ptr( new A{ 33 }, [&counter]( A* ptr ) { delete ptr; ++counter; } );
+		 auto p = make_value_ptr( new A{ 33 }, [&counter]( A* ptr ) { delete ptr; ++counter; } );
 		assert( p->foo == 33 );
 		auto p2 = p;	// test copy of deleter lambda
 		assert( p2->foo == 33 );
@@ -337,7 +341,7 @@ void lambda_deleter_tests() {
 		assert( counter == 2 );	// two deletes, p & p2	
 	}
 
-	{	// stateless lambda deleter with make_value_ptr
+	{	// stateless lambda deleter
 		auto p = make_value_ptr( new A{ 5 }, []( A* ptr ) { delete ptr; } );
 		assert( p->foo == 5 );
 		auto p2 = p;		// test copy of deleter lambda
@@ -405,7 +409,7 @@ void slice_protection() {
 	value_ptr<Base> b{new Base(3)};	// fine
 	b = nullptr;	// fine
 	
-	// b = new Derived( 1, 2 );	// expected: compilation failure
+	// b = new Derived( 1, 2 );	// expected: compilation failure due
 	// b.reset( new Derived( 1, 2 ) );	// expected: compilation failure
 	// value_ptr<Base> a{ new Derived(1,2) };	// expected: compilation failure
 }
@@ -414,11 +418,34 @@ void unique_ptr_tests() {
 
 	// test implicit conversion to unique_ptr
 	{
-		auto test = []( const std::unique_ptr<A>& ptr, int val ) { return ptr->foo == val; };
+		auto test = []( std::unique_ptr<A>& ptr, int val ) { return ptr->foo == val; };
 		value_ptr<A> a{ new A{ 55 } };
 		assert( test( a, 55 ) );	// implicit conversion
-		assert( test( a.ptr(), 55 ) );	// ptr convenience method
+		assert( test( a.uptr(), 55 ) );	// ptr convenience method
+		// assert(test( std::move( a ), 55));	// expected compilation failure; ref qualifier on conversion
 	}
+
+	// test implicit conversion to unique_ptr
+	{
+		auto test = []( std::unique_ptr<A>&& ptr, int val) { return ptr->foo == val; };
+		value_ptr<A> a{ new A{ 55 } };
+		assert(test( std::move( a.uptr() ), 55));
+	}
+
+	// test construct from unique_ptr&&, defined type
+	{
+		value_ptr<A> a = std::unique_ptr<A>(new A{ 55 });
+		assert(a->foo == 55);
+	}
+
+	// test construct from unique_ptr&&, defined type
+	{
+		std::unique_ptr<A> u (new A{ 55 });
+		value_ptr<A> a( std::move( u ) );
+		assert(a->foo == 55);
+		assert(u.get() == nullptr);
+	}
+
 }
 
 int main() {
@@ -439,9 +466,9 @@ int main() {
 
 	clone_tests();
 	slice_protection();
-	undefined_tests();
+	incomplete_tests();
 	unique_ptr_tests();
 
-	std::cout << "All tests passed";
+	std::cout << "All tests passed" << std::endl;
 	return 0;
 }

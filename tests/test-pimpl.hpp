@@ -1,5 +1,5 @@
-#ifndef _TEST_PIMPL_
-#define _TEST_PIMPL_
+#ifndef TEST_PIMPL
+#define TEST_PIMPL
 
 #include "../value_ptr.hpp"
 

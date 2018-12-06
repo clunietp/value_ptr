@@ -1,4 +1,6 @@
 
+// Copyright 2017-2018 by Tom Clunie
+// https://github.com/clunietp/value_ptr
 // Distributed under the Boost Software License, Version 1.0.
 //    (See http://www.boost.org/LICENSE_1_0.txt)
 
@@ -9,10 +11,20 @@
 #include <functional>	// less_equal
 #include <cassert>		// assert
 
-#if defined( _MSC_VER)	// todo:  check constexpr/delegating ctor issue in vs17.  issue persists in vs15 update 3 despite ms closed bug as fixed, or i'm doing something wrong
-#define VALUE_PTR_CONSTEXPR 
+#if defined( _MSC_VER)	
+
+#if (_MSC_VER >= 1915)	// constexpr tested/working _MSC_VER 1915 (vs17 15.8)
+#define VALUE_PTR_CONSTEXPR constexpr
+#else	// msvc 15 bug prevents constexpr in some cases
+#define VALUE_PTR_CONSTEXPR
+#endif
+
+//	https://blogs.msdn.microsoft.com/vcblog/2016/03/30/optimizing-the-layout-of-empty-base-classes-in-vs2015-update-2-3/
+#define USE_EMPTY_BASE_OPTIMIZATION __declspec(empty_bases)	// requires vs2015 update 2 or later.  still needed vs2017
+
 #else
 #define VALUE_PTR_CONSTEXPR constexpr 
+#define USE_EMPTY_BASE_OPTIMIZATION
 #endif
 
 namespace smart_ptr {
@@ -24,132 +36,98 @@ namespace smart_ptr {
 		template<typename... Ts> struct make_void { typedef void type; };
 		template<typename... Ts> using void_t = typename make_void<Ts...>::type;
 
-		// is_defined<T>, from https://stackoverflow.com/a/39816909
-		template <class, class = void> struct is_defined : std::false_type { };
-		template <class T> struct is_defined<
+		// is_incomplete<T>, based on https://stackoverflow.com/a/39816909
+		template <class, class = void> struct is_incomplete : std::true_type {};
+		template <class T> struct is_incomplete<
 			T
-			, typename std::enable_if<std::is_object<T>::value && !std::is_pointer<T>::value && ( sizeof( T ) > 0 )>::type
+			, typename std::enable_if<std::is_object<T>::value && !std::is_pointer<T>::value && (sizeof(T) > 0)>::type
 			>
-			: std::true_type{}
-		;
+			: std::false_type
+		{};
 
-		// Class function/type detection
-		//	https://stackoverflow.com/a/30848101
-
-		// Primary template handles all types not supporting the operation.
-		template <typename, template <typename> class, typename = void_t<>>
-		struct detect : std::false_type {};
-
-		// Specialization recognizes/validates only types supporting the archetype.
-		template <typename T, template <typename> class Op>
-
-		struct detect<T, Op, void_t<Op<T>>> : std::true_type {};
-
-		// clone function
-		template <typename T> using fn_clone_t = decltype( std::declval<T>().clone() );
-
-		// has_clone
-		template <typename T> using has_clone = detect<T, fn_clone_t>;
+		// has clone() method detection
+		template<class T, class = void> struct has_clone : std::false_type {};
+		template<class T> struct has_clone<T, decltype(void(std::declval<T>().clone()))> : std::true_type {};
 
 		// Returns flag if test passes (false==slicing is probable)
 		// T==base pointer, U==derived/supplied pointer
 		template <typename T, typename U, bool IsDefaultCopier>
-		struct slice_test : std::conditional<
+		struct slice_test : std::integral_constant<bool, 
 			std::is_same<T, U>::value	// if U==T, no need to check for slicing
 			|| std::is_same<std::nullptr_t, U>::value	// nullptr is fine
 			|| !IsDefaultCopier	// user provided cloner, assume they're handling it
 			|| has_clone<typename std::remove_pointer<U>::type>::value	// using default cloner, clone method must exist in U
-			, std::true_type
-			, std::false_type
-		>::type {};
+		>::type 
+		{};
 
-		// op_wrapper wraps Op::operator() and dispatches to observer fn
-		//	observer fn then calls op_wrapper.op() to invoke Op::operator()
-		//	this redirection is needed to call the actual operation in a context when T is actually defined
-		template <typename T, typename Op, typename R, typename ObserverFnSig>
-		struct op_wrapper : public Op {
-			using this_type = op_wrapper<T, Op, R, ObserverFnSig>;
-			using return_type = R;
-
-			// observer function to call
-			ObserverFnSig observer_fn;
-
-			template <typename Op_, typename Fn>
-			constexpr op_wrapper( Op_&& op, Fn&& obs )
-				: Op( std::forward<Op_>( op ) )
-				, observer_fn( std::forward<Fn>( obs ) )
-			{}
-
-			// invoked for event
-			template <typename... Args>
-			return_type operator()( Args&&... args ) const {
-				assert( this->observer_fn != nullptr );
-				//	here we want to notify observer of event, with reference to this as first parameter
-				return this->observer_fn( (const void*)this, std::forward<Args>( args )... );
-			}
-			
-			// call to actual operation (Op::operator()), invoked by observer
-			template <typename... Args>
-			return_type op( Args&&... args ) const {
-				return Op::operator()( std::forward<Args>(args)... );
-			}
-
-		};	// op_wrapper
-		
-		// ptr_data
+		// ptr_data:  holds pointer, deleter, copier
+		//	pointer and deleter held in unique_ptr member, this struct is derived from copier to minimize overall footprint
+		//	uses EBCO to solve sizeof(value_ptr<T>) == sizeof(T*) problem
 		template <typename T, typename Deleter, typename Copier>
-			struct
-#ifdef _MSC_VER
-			//	https://blogs.msdn.microsoft.com/vcblog/2016/03/30/optimizing-the-layout-of-empty-base-classes-in-vs2015-update-2-3/
-			__declspec( empty_bases )	// requires vs2015 update 2
-#endif
+			struct 
+			USE_EMPTY_BASE_OPTIMIZATION
 			ptr_data
-			: public std::unique_ptr<T, Deleter>
-			, public Copier
+			: public Copier
 		{
+			
+			using unique_ptr_type = std::unique_ptr<T, Deleter>;
+			using pointer = typename unique_ptr_type::pointer;
+			using deleter_type = typename unique_ptr_type::deleter_type;
 			using copier_type = Copier;
-			using base_type_uptr = std::unique_ptr<T, Deleter>;
-			using deleter_type = Deleter;
+
+			unique_ptr_type uptr;
 
 			ptr_data() = default;
 
 			template <typename Dx, typename Cx>
-			constexpr ptr_data( T* px, Dx&& dx, Cx&& cx ) noexcept
-				: base_type_uptr( px, std::forward<Dx>(dx) )
-				, copier_type( std::forward<Cx>(cx) )
+			constexpr ptr_data( T* px, Dx&& dx, Cx&& cx )
+				: copier_type( std::forward<Cx>(cx) )
+				, uptr(px, std::forward<Dx>(dx))
 			{}
-
-			copier_type& get_copier() { return static_cast<copier_type&>( *this ); }
-			const copier_type& get_copier() const { return static_cast<const copier_type&>( *this ); }
-
-			ptr_data clone() const {
-				return{ this->get_copier()( this->get() ), this->get_deleter(), this->get_copier() };
-			}
 
 			ptr_data( ptr_data&& ) = default;
 			ptr_data& operator=( ptr_data&& ) = default;
-			ptr_data( const ptr_data& that )
+			
+			constexpr ptr_data( const ptr_data& that )
 				: ptr_data( that.clone() )
 			{}
 
 			ptr_data& operator=( const ptr_data& that ) {
-				if ( this == &that )
-					return *this;
-				*this = that.clone();
+				if ( this != &that )
+					*this = that.clone();
 				return *this;
+			}
+
+			// get_copier, analogous to std::unique_ptr<T>::get_deleter()
+			copier_type& get_copier() { return *this; }
+
+			// get_copier, analogous to std::unique_ptr<T>::get_deleter()
+			const copier_type& get_copier() const { return *this; }
+
+			ptr_data clone() const {
+				// get a copier, use it to clone ptr, construct/return a ptr_data
+				return{ 
+					(T*)this->get_copier()(this->uptr.get())
+					, this->uptr.get_deleter()
+					, this->get_copier() 
+				};
 			}
 
 		};	// ptr_data
 
-		// ptr_base:	base class for defined types
+		// ptr_base:	value_ptr base class
+		//	holds ptr_data
 		template <typename T, typename Deleter, typename Copier>
 		struct ptr_base {
 
-			using _data_type = ptr_data<T, Deleter, Copier>;
-			using _pointer = typename _data_type::pointer;
+			using deleter_type = Deleter;
+			using copier_type = Copier;
+			using _data_type = ptr_data<T, deleter_type, copier_type>;
+
 			_data_type _data;
 
-			using pointer = _pointer;
+			using pointer = typename _data_type::pointer;
+			using unique_ptr_type = std::unique_ptr<T, Deleter>;
 
 			template <typename Px, typename Dx, typename Cx>
 			constexpr ptr_base( Px&& px, Dx&& dx, Cx&& cx )
@@ -160,97 +138,135 @@ namespace smart_ptr {
 				)
 			{}
 
-			// conversion to unique_ptr
-			const typename _data_type::base_type_uptr& ptr() const {
-				return this->_data;
+			// return unique_ptr
+			const unique_ptr_type& uptr() const & {
+				return this->_data.uptr;
 			}
 
-			// conversion to unique_ptr
-			typename _data_type::base_type_uptr& ptr() {
-				return this->_data;
+			// return unique_ptr
+			unique_ptr_type& uptr() & {
+				return this->_data.uptr;
 			}
 			
-			// conversion to unique_ptr
-			operator typename _data_type::base_type_uptr const&() const {
-				return this->_data;
+			// conversion to unique_ptr, ref qualified
+			operator unique_ptr_type const&() const & {
+				return this->uptr();
 			}
 
-			// conversion to unique_ptr
-			operator typename _data_type::base_type_uptr& () {
-				return this->_data;
+			// conversion to unique_ptr, ref qualified
+			operator unique_ptr_type& () & {
+				return this->uptr();
 			}
-			
+
+			deleter_type& get_deleter() { return this->uptr().get_deleter(); }
+			const deleter_type& get_deleter() const { return this->uptr().get_deleter(); }
+
+			copier_type& get_copier() { return this->_data.get_copier(); }
+			const copier_type& get_copier() const { return this->_data.get_copier(); }
 
 		};	// ptr_base
 
-		// ptr_base_undefined:	intermediate base class for undefined types
+		// wraps a functor (Op), intercepts calls to Op::operator(), and forwards the call to the specified delegate
+		//	this is a smallest-footprint dynamic dispatch approach to handling (potentially) incomplete types
+		//	delegate should have the signature: result( [const] functor_wrapper<...>& (or [const] Op&), params... (from Op::operator()) )
+		//	inheriting from Op to minimize sizeof(functor_wrapper)
+		template <typename Op, typename Delegate>
+		struct
+			functor_wrapper
+			: public Op	
+		{			
+			// delegate function to call
+			Delegate delegate_;
+
+			// construct with Op, Delegate
+			template <typename Op_, typename Delegate_>
+			constexpr functor_wrapper( Op_&& op, Delegate_&& del)
+				: Op(std::forward<Op>(op))
+				, delegate_(std::forward<Delegate>(del))
+			{}
+			
+			// invoked for event, const
+			template <typename... Args>
+			auto operator()(Args&&... args) const -> typename std::result_of<Op(Args...)>::type {
+				if (this->delegate_ == nullptr)
+					throw std::bad_function_call();
+				return this->delegate_( *this, std::forward<Args>(args)...);	//	call delegate, with reference to this as first parameter
+			}
+
+			// invoked for event
+			template <typename... Args>
+			auto operator()(Args&&... args) -> typename std::result_of<Op(Args...)>::type {
+				if (this->delegate_ == nullptr)
+					throw std::bad_function_call();
+				return this->delegate_( *this, std::forward<Args>(args)...);	//	call delegate, with const reference to this as first parameter
+			}
+
+		};	// functor_wrapper
+		
+		// ptr_base_incomplete:	intermediate base class for incomplete types
+		//	wraps copy and delete ops in functor wrappers to handle incomplete types
 		template <typename T, typename DeleteOp, typename CopyOp
-			, typename Deleter = op_wrapper<T, DeleteOp, void, void( *)( const void*, T* )>
-			, typename Copier = op_wrapper<T, CopyOp, T*, T*(*)(const void*, const T*)>
+			, typename Deleter = functor_wrapper<DeleteOp, void(*)(const DeleteOp&, T*)>
+			, typename Copier = functor_wrapper<CopyOp, T*(*)(const CopyOp&, const T*)>
 		>
-		struct ptr_base_undefined 
+			struct ptr_base_incomplete
 			: ptr_base<T, Deleter, Copier> {
 
-			using base_type = ptr_base<T,Deleter,Copier>;
+			using base_type = ptr_base<T, Deleter, Copier>;
 			using pointer = typename base_type::pointer;
 
-			// default construct for undefined type
+			// default construct for incomplete type
 			template <typename Dx, typename Cx>
-			constexpr ptr_base_undefined( std::nullptr_t, Dx&& dx, Cx&& cx )
+			constexpr ptr_base_incomplete(std::nullptr_t, Dx&& dx, Cx&& cx)
 				: base_type(
 					nullptr
-					, Deleter( std::forward<Dx>( dx ), []( const void*, T* ptr ) { assert( ptr == nullptr ); } )
-					, Copier( std::forward<Cx>( cx ), []( const void* op, const T* ptr ) -> T* { assert( ptr == nullptr ); return nullptr; } )
+					, Deleter(std::forward<Dx>(dx), [](const DeleteOp&, T* ptr) { assert(ptr == nullptr); })
+					, Copier(std::forward<Cx>(cx), [](const CopyOp&, const T* ptr) -> T* { assert(ptr == nullptr); return nullptr; })
 				)
 			{}
 
 			template <typename Dx, typename Cx>
-			constexpr ptr_base_undefined( pointer px, Dx&& dx, Cx&& cx )
+			constexpr ptr_base_incomplete(pointer px, Dx&& dx, Cx&& cx)
 				: base_type(
 					px
-					, Deleter( std::forward<Dx>( dx ), []( const void* op, T* ptr ) {
-							if ( ptr )
-								static_cast<const Deleter*>( op )->op( ptr );
-						}
-					)
-					, Copier( std::forward<Cx>( cx ), []( const void* op, const T* ptr ) -> T* {
-							if ( !ptr )
-								return nullptr;
-							return static_cast<const Copier*>( op )->op( ptr );
-						}
-					)
+					, Deleter(std::forward<Dx>(dx), [](const DeleteOp& op, T* ptr) { op(ptr); } )
+					, Copier(std::forward<Cx>(cx), [](const CopyOp& op, const T* ptr) -> T* { return op(ptr); } )
 				)
 			{}
-		};	// ptr_base_undefined
+
+		};	// ptr_base_incomplete
 
 	}	// detail
 
 	template <typename T>
-	struct default_copy {
+	struct 
+		USE_EMPTY_BASE_OPTIMIZATION
+		default_copy {
 
+	private:
+		struct _clone_tag {};
+		struct _copy_tag {};
+
+		T* operator()(const T* what, _clone_tag) const {
+			return what->clone();
+		}
+
+		T* operator()(const T* what, _copy_tag) const {
+			return new T(*what);
+		}	// _copy
+
+	public:
 		// copy operator
-		T *operator()( const T* what ) const {
+		T* operator()( const T* what ) const {
 
 			if ( !what )
 				return nullptr;
 
 			// tag dispatch on has_clone
 			return this->operator()( what
-				, typename std::conditional<detail::has_clone<T>::value, _clone, _copy>::type() 
+				, typename std::conditional<detail::has_clone<T>::value, _clone_tag, _copy_tag>::type() 
 				);
 		}	// operator()
-
-	private:
-		struct _clone {};
-		struct _copy {};
-
-		T* operator()( const T* what, _clone ) const {
-			return what->clone();
-		}
-
-		T* operator()( const T* what, _copy ) const {
-			return new T( *what );
-		}	// _copy
 
 	};	// default_copy
 
@@ -258,9 +274,9 @@ namespace smart_ptr {
 		, typename Deleter = std::default_delete<T>
 		, typename Copier = default_copy<T>
 		, typename Base = 
-			typename std::conditional<detail::is_defined<T>::value, 
-				detail::ptr_base<T, Deleter, Copier>
-				, detail::ptr_base_undefined<T, Deleter, Copier>
+			typename std::conditional<detail::is_incomplete<T>::value, 
+				detail::ptr_base_incomplete<T, Deleter, Copier>
+				, detail::ptr_base<T, Deleter, Copier>
 			>::type
 	>
 		struct value_ptr 
@@ -294,26 +310,36 @@ namespace smart_ptr {
 
 			// construct with pointer, deleter
 			template <typename Px>
-			VALUE_PTR_CONSTEXPR value_ptr( Px px, deleter_type dx )	// constexpr here yields c2476 on msvc15
+			VALUE_PTR_CONSTEXPR
+			value_ptr( Px px, deleter_type dx )
 				: value_ptr( px, std::move(dx), copier_type() )
 			{}
 
 			// construct with pointer
 			template <typename Px>
-			VALUE_PTR_CONSTEXPR value_ptr( Px px ) // constexpr here yields c2476 on msvc15
+			VALUE_PTR_CONSTEXPR
+			value_ptr( Px px )
 				: value_ptr( px, deleter_type(), copier_type() )
 			{}
 
+			// construct from unique_ptr, copier
+			VALUE_PTR_CONSTEXPR
+			value_ptr(std::unique_ptr<T, Deleter> uptr, copier_type copier = copier_type() )
+				: value_ptr(uptr.release(), uptr.get_deleter(), std::move(copier) )
+			{}
+
 			// std::nullptr_t, default ctor 
-			explicit VALUE_PTR_CONSTEXPR value_ptr( std::nullptr_t = nullptr )	// constexpr here yields c2476 on msvc15
+			explicit 
+			VALUE_PTR_CONSTEXPR
+			value_ptr( std::nullptr_t = nullptr )
 				: value_ptr( nullptr, deleter_type(), copier_type() )
 			{}
 			
 			// get pointer
-			pointer get() { return this->_data.get(); }
+			pointer get() { return this->uptr().get(); }
 
 			// get const pointer
-			const_pointer get() const { return this->_data.get(); }
+			const_pointer get() const { return this->uptr().get(); }
 
 			// reset pointer
 			template <typename Px = std::nullptr_t>
@@ -328,8 +354,8 @@ namespace smart_ptr {
 			}
 
 			// release pointer
-			pointer release() noexcept {
-				return this->_data.release();
+			pointer release() {
+				return this->uptr().release();
 			}	// release
 
 			// return flag if has pointer
@@ -344,12 +370,6 @@ namespace smart_ptr {
 			pointer operator-> () { return this->get(); }
 			
 			void swap( value_ptr& that ) { std::swap( this->_data, that._data ); }
-
-			deleter_type& get_deleter() { return this->_data.get_deleter(); }
-			const deleter_type& get_deleter() const { return this->_data.get_deleter(); }
-
-			copier_type& get_copier() { return this->_data.get_copier(); }
-			const copier_type& get_copier() const { return this->_data.get_copier(); }
 
 	};// value_ptr
 
@@ -379,19 +399,22 @@ namespace smart_ptr {
 	template <class T, class D, class C> bool operator >= ( const value_ptr<T, D, C>& x, std::nullptr_t ) { return !( x < nullptr ); }
 	template <class T, class D, class C> bool operator >= ( std::nullptr_t, const value_ptr<T, D, C>& y ) { return !( nullptr < y ); }
 
-	template <typename T, typename Deleter>
-	static inline auto make_value_ptr( T* ptr, Deleter&& dx ) -> value_ptr<T, Deleter> {
-		return value_ptr<T, Deleter>( ptr, std::forward<Deleter>( dx ) );
-	}	// make_value_ptr
+	// make value_ptr with default deleter and copier, analogous to std::make_unique
+	template<typename T, typename... Args>
+	value_ptr<T> make_value(Args&&... args) {
+		return value_ptr<T>(new T(std::forward<Args>(args)...));
+	}
 
-	template <typename T, typename Deleter, typename Copier>
-	static inline auto make_value_ptr( T* ptr, Deleter&& dx, Copier&& cx ) -> value_ptr<T, Deleter, Copier> {
-		return value_ptr<T, Deleter, Copier>( ptr, std::forward<Deleter>( dx ), std::forward<Copier>( cx ) );
+	// make a value_ptr from pointer with custom deleter and copier
+	template <typename T, typename Deleter = std::default_delete<T>, typename Copier = default_copy<T>>
+	static inline auto make_value_ptr(T* ptr, Deleter&& dx = {}, Copier&& cx = {}) -> value_ptr<T, Deleter, Copier> {
+		return value_ptr<T, Deleter, Copier>( ptr, std::forward<Deleter>( dx ), std::forward<Copier>(cx) );
 	}	// make_value_ptr
 
 }	// smart_ptr ns
 
 #undef VALUE_PTR_CONSTEXPR
+#undef USE_EMPTY_BASE_OPTIMIZATION
 
 #endif // !SMART_PTR_VALUE_PTR
 
