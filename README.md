@@ -1,6 +1,6 @@
-value_ptr ![Travis CI](https://travis-ci.org/trent33/value_ptr.svg?branch=master)
+value_ptr ![Travis CI](https://travis-ci.org/clunietp/value_ptr.svg?branch=master)
 ===================
-https://github.com/trent33/value_ptr
+https://github.com/clunietp/value_ptr
 
 Introduction
 ------------
@@ -106,11 +106,11 @@ Known limitations:
 
 Tested compilers:
 ------------
-- MSVC 2015 Update 3
+- MSVC 2015 Update 3, MSVC 2017 15.8
 - G++ 4.8, G++ 5
 - Clang 3.5
 
-Unit Tests ![Travis CI](https://travis-ci.org/trent33/value_ptr.svg?branch=master)
+Unit Tests ![Travis CI](https://travis-ci.org/clunietp/value_ptr.svg?branch=master)
 -------------
 - Compile and run the files in the 'tests' directory
 
