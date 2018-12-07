@@ -7,8 +7,8 @@
 #ifndef SMART_PTR_VALUE_PTR
 #define SMART_PTR_VALUE_PTR
 
-#include <memory>		// unique_ptr
-#include <functional>	// less_equal
+#include <memory>		// std::unique_ptr
+#include <functional>	// std::less
 #include <cassert>		// assert
 
 #if defined( _MSC_VER)	
@@ -27,17 +27,29 @@
 #define USE_EMPTY_BASE_OPTIMIZATION
 #endif
 
+// define this to force value_ptr to use the incomplete base structure at all times
+//	this should only be enabled when encountering linker errors related to incomplete types
+//	this is needed in some cases where the definition of a type is not visible to the compiler and the wrong type of value_ptr is built
+//	The cost per value_ptr instance is space for two extra pointers and a trivial callback mechanism when the copiers and deleters are called
+#ifdef VALUE_PTR_FORCE_INCOMPLETE
+#define VALUE_PTR_INCOMPLETE_VALUE std::true_type
+#else
+#define VALUE_PTR_INCOMPLETE_VALUE std::false_type
+#endif
+
 namespace smart_ptr {
 
 	namespace detail {
 
 		// is_incomplete<T>, based on https://stackoverflow.com/a/39816909
 		template <class, class = void> struct is_incomplete : std::true_type {};
+
 		template <class T> struct is_incomplete<
 			T
 			, typename std::enable_if<std::is_object<T>::value && !std::is_pointer<T>::value && (sizeof(T) > 0)>::type
 			>
-			: std::false_type
+			: 
+			VALUE_PTR_INCOMPLETE_VALUE
 		{};
 
 		// has clone() method detection
@@ -94,10 +106,10 @@ namespace smart_ptr {
 			}
 
 			// get_copier, analogous to std::unique_ptr<T>::get_deleter()
-			copier_type& get_copier() { return *this; }
+			copier_type& get_copier() noexcept { return *this; }
 
 			// get_copier, analogous to std::unique_ptr<T>::get_deleter()
-			const copier_type& get_copier() const { return *this; }
+			const copier_type& get_copier() const noexcept { return *this; }
 
 			ptr_data clone() const {
 				// get a copier, use it to clone ptr, construct/return a ptr_data
@@ -133,31 +145,31 @@ namespace smart_ptr {
 				)
 			{}
 
-			// return unique_ptr
-			const unique_ptr_type& uptr() const & {
+			// return unique_ptr, ref qualified
+			const unique_ptr_type& uptr() const & noexcept {
 				return this->_data.uptr;
 			}
 
-			// return unique_ptr
-			unique_ptr_type& uptr() & {
+			// return unique_ptr, ref qualified
+			unique_ptr_type& uptr() & noexcept {
 				return this->_data.uptr;
 			}
 			
 			// conversion to unique_ptr, ref qualified
-			operator unique_ptr_type const&() const & {
+			operator unique_ptr_type const&() const & noexcept {
 				return this->uptr();
 			}
 
 			// conversion to unique_ptr, ref qualified
-			operator unique_ptr_type& () & {
+			operator unique_ptr_type& () & noexcept {
 				return this->uptr();
 			}
 
-			deleter_type& get_deleter() { return this->uptr().get_deleter(); }
-			const deleter_type& get_deleter() const { return this->uptr().get_deleter(); }
+			deleter_type& get_deleter() noexcept { return this->uptr().get_deleter(); }
+			const deleter_type& get_deleter() const noexcept { return this->uptr().get_deleter(); }
 
-			copier_type& get_copier() { return this->_data.get_copier(); }
-			const copier_type& get_copier() const { return this->_data.get_copier(); }
+			copier_type& get_copier() noexcept { return this->_data.get_copier(); }
+			const copier_type& get_copier() const noexcept { return this->_data.get_copier(); }
 
 		};	// ptr_base
 
@@ -173,7 +185,7 @@ namespace smart_ptr {
 			// delegate function to call
 			Delegate delegate_;
 
-			// construct with Op, Delegate
+			// construct with Op, Delegate; delegate must not be null
 			template <typename Op_, typename Delegate_>
 			constexpr functor_wrapper( Op_&& op, Delegate_&& del)
 				: Op(std::forward<Op>(op))
@@ -183,16 +195,12 @@ namespace smart_ptr {
 			// invoked for event, const
 			template <typename... Args>
 			auto operator()(Args&&... args) const -> typename std::result_of<Op(Args...)>::type {
-				if (this->delegate_ == nullptr)
-					throw std::bad_function_call();
 				return this->delegate_( *this, std::forward<Args>(args)...);	//	call delegate, with reference to this as first parameter
 			}
 
 			// invoked for event
 			template <typename... Args>
 			auto operator()(Args&&... args) -> typename std::result_of<Op(Args...)>::type {
-				if (this->delegate_ == nullptr)
-					throw std::bad_function_call();
 				return this->delegate_( *this, std::forward<Args>(args)...);	//	call delegate, with const reference to this as first parameter
 			}
 
@@ -205,7 +213,7 @@ namespace smart_ptr {
 			, typename Copier = functor_wrapper<CopyOp, T*(*)(const CopyOp&, const T*)>
 		>
 			struct ptr_base_incomplete
-			: ptr_base<T, Deleter, Copier> {
+				: ptr_base<T, Deleter, Copier> {
 
 			using base_type = ptr_base<T, Deleter, Copier>;
 			using pointer = typename base_type::pointer;
@@ -220,6 +228,7 @@ namespace smart_ptr {
 				)
 			{}
 
+			// construct when incomplete type is known; lambdas in this context will evaluate properly for previously-incomplete types
 			template <typename Dx, typename Cx>
 			constexpr ptr_base_incomplete(pointer px, Dx&& dx, Cx&& cx)
 				: base_type(
@@ -234,35 +243,18 @@ namespace smart_ptr {
 	}	// detail
 
 	template <typename T>
-	struct 
-		USE_EMPTY_BASE_OPTIMIZATION
-		default_copy {
-
+	struct default_copy {
 	private:
 		struct _clone_tag {};
 		struct _copy_tag {};
-
-		T* operator()(const T* what, _clone_tag) const {
-			return what->clone();
-		}
-
-		T* operator()(const T* what, _copy_tag) const {
-			return new T(*what);
-		}	// _copy
-
+		T* operator()(const T* what, _clone_tag) const { return what->clone(); }
+		T* operator()(const T* what, _copy_tag) const { return new T(*what); }
 	public:
-		// copy operator
-		T* operator()( const T* what ) const {
-
+		T* operator()( const T* what ) const {	// copy operator
 			if ( !what )
 				return nullptr;
-
-			// tag dispatch on has_clone
-			return this->operator()( what
-				, typename std::conditional<detail::has_clone<T>::value, _clone_tag, _copy_tag>::type() 
-				);
-		}	// operator()
-
+			return this->operator()( what, typename std::conditional<detail::has_clone<T>::value, _clone_tag, _copy_tag>::type() );	// tag dispatch on has_clone
+		}	//
 	};	// default_copy
 
 	template <typename T
@@ -281,24 +273,21 @@ namespace smart_ptr {
 			using element_type = T;
 
 			using pointer = typename base_type::pointer;
-			using const_pointer = const pointer;
-			
 			using reference = typename std::add_lvalue_reference<element_type>::type;
-			using const_reference = const reference;
 
-			using deleter_type = Deleter;
-			using copier_type = Copier;
+			using deleter_type = typename base_type::deleter_type;	// may differ from Deleter
+			using copier_type = typename base_type::copier_type;	// may differ from Copier
 			
 			// construct with pointer, deleter, copier
 			template <typename Px>
-			constexpr value_ptr( Px px, deleter_type dx, copier_type cx )
+			constexpr value_ptr( Px px, Deleter dx, Copier cx )
 				: base_type( px
 					, std::move( dx )
 					, std::move( cx )
 				)
 			{
 				static_assert(
-					detail::slice_test<pointer, Px, std::is_same<default_copy<T>, copier_type>::value>::value
+					detail::slice_test<pointer, Px, std::is_same<default_copy<T>, Copier>::value>::value
 					, "value_ptr; clone() method not detected and not using custom copier; slicing may occur"
 					);
 			}
@@ -306,20 +295,20 @@ namespace smart_ptr {
 			// construct with pointer, deleter
 			template <typename Px>
 			VALUE_PTR_CONSTEXPR
-			value_ptr( Px px, deleter_type dx )
-				: value_ptr( px, std::move(dx), copier_type() )
+			value_ptr( Px px, Deleter dx )
+				: value_ptr( px, std::move(dx), Copier() )
 			{}
 
 			// construct with pointer
 			template <typename Px>
 			VALUE_PTR_CONSTEXPR
 			value_ptr( Px px )
-				: value_ptr( px, deleter_type(), copier_type() )
+				: value_ptr( px, Deleter(), Copier() )
 			{}
 
 			// construct from unique_ptr, copier
 			VALUE_PTR_CONSTEXPR
-			value_ptr(std::unique_ptr<T, Deleter> uptr, copier_type copier = copier_type() )
+			value_ptr(std::unique_ptr<T, Deleter> uptr, Copier copier = {})
 				: value_ptr(uptr.release(), uptr.get_deleter(), std::move(copier) )
 			{}
 
@@ -327,43 +316,44 @@ namespace smart_ptr {
 			explicit 
 			VALUE_PTR_CONSTEXPR
 			value_ptr( std::nullptr_t = nullptr )
-				: value_ptr( nullptr, deleter_type(), copier_type() )
+				: value_ptr( nullptr, Deleter(), Copier() )
 			{}
 			
 			// get pointer
-			pointer get() { return this->uptr().get(); }
+			pointer get() const noexcept { return this->uptr().get(); }
 
-			// get const pointer
-			const_pointer get() const { return this->uptr().get(); }
-
-			// reset pointer
-			template <typename Px = std::nullptr_t>
-			void reset( Px px = nullptr ) {
+			// reset pointer to compatible type
+			template <typename Px, typename = typename std::enable_if<std::is_convertible<Px, pointer>::value>::type>
+			void reset( Px px ) {
 
 				static_assert(
-					detail::slice_test<pointer, Px, std::is_same<default_copy<T>, copier_type>::value>::value
+					detail::slice_test<pointer, Px, std::is_same<default_copy<T>, Copier>::value>::value
 					, "value_ptr; clone() method not detected and not using custom copier; slicing may occur"
 					);
 
-				*this = value_ptr( px, this->get_deleter(), this->get_copier() );
+				*this = value_ptr( std::forward<Px>( px ), this->get_deleter(), this->get_copier() );
 			}
 
+			// reset pointer
+			void reset() { this->reset(nullptr); }
+
 			// release pointer
-			pointer release() {
+			pointer release() noexcept {
 				return this->uptr().release();
 			}	// release
 
 			// return flag if has pointer
-			explicit operator bool() const {
+			explicit operator bool() const noexcept {
 				return this->get() != nullptr;
 			}
 
-			const_reference operator*() const { return *this->get(); }
-			reference operator*() { return *this->get(); }
+			// return reference to T, UB if null
+			reference operator*() const noexcept { return *this->get(); }
 
-			const_pointer operator-> () const { return this->get(); }
-			pointer operator-> () { return this->get(); }
+			// return pointer to T
+			pointer operator-> () const noexcept { return this->get(); }
 			
+			// swap with other value_ptr
 			void swap( value_ptr& that ) { std::swap( this->_data, that._data ); }
 
 	};// value_ptr
@@ -371,7 +361,7 @@ namespace smart_ptr {
 	  // non-member swap
 	template <class T1, class D1, class C1, class T2, class D2, class C2> void swap( value_ptr<T1, D1, C1>& x, value_ptr<T2, D2, C2>& y ) { x.swap( y ); }
 
-	// non-member operators
+	// non-member operators, based on https://en.cppreference.com/w/cpp/memory/unique_ptr/operator_cmp
 	template <class T1, class D1, class C1, class T2, class D2, class C2> bool operator == ( const value_ptr<T1, D1, C1>& x, const value_ptr<T2, D2, C2>& y ) { return x.get() == y.get(); }
 	template<class T1, class D1, class C1, class T2, class D2, class C2> bool operator != ( const value_ptr<T1, D1, C1>& x, const value_ptr<T2, D2, C2>& y ) { return x.get() != y.get(); }
 	template<class T1, class D1, class C1, class T2, class D2, class C2> bool operator < ( const value_ptr<T1, D1, C1>& x, const value_ptr<T2, D2, C2>& y ) {
@@ -379,20 +369,25 @@ namespace smart_ptr {
 		return std::less<common_type>()( x.get(), y.get() );
 	}
 	template<class T1, class D1, class C1, class T2, class D2, class C2> bool operator <= ( const value_ptr<T1, D1, C1>& x, const value_ptr<T2, D2, C2>& y ) { return !( y < x ); }
-	template<class T1, class D1, class C1, class T2, class D2, class C2> bool operator >( const value_ptr<T1, D1, C1>& x, const value_ptr<T2, D2, C2>& y ) { return y < x; }
+	template<class T1, class D1, class C1, class T2, class D2, class C2> bool operator > ( const value_ptr<T1, D1, C1>& x, const value_ptr<T2, D2, C2>& y ) { return y < x; }
 	template<class T1, class D1, class C1, class T2, class D2, class C2> bool operator >= ( const value_ptr<T1, D1, C1>& x, const value_ptr<T2, D2, C2>& y ) { return !( x < y ); }
+
 	template <class T, class D, class C> bool operator == ( const value_ptr<T, D, C>& x, std::nullptr_t ) noexcept { return !x; }
-	template <class T, class D, class C> bool operator == ( std::nullptr_t, const value_ptr<T, D, C>& x ) noexcept { return !x; }
-	template <class T, class D, class C> bool operator != ( const value_ptr<T, D, C>& x, std::nullptr_t ) noexcept { return (bool)x; }
-	template <class T, class D, class C> bool operator != ( std::nullptr_t, const value_ptr<T, D, C>& x ) noexcept { return (bool)x; }
-	template <class T, class D, class C> bool operator < ( const value_ptr<T, D, C>& x, std::nullptr_t ) { return std::less<typename value_ptr<T, D, C>::pointer>()( x.get(), nullptr ); }
-	template <class T, class D, class C> bool operator<( std::nullptr_t, const value_ptr<T, D, C>& y ) { return std::less<typename value_ptr<T, D, C>::pointer>()( nullptr, y.get() ); }
-	template <class T, class D, class C> bool operator <= ( const value_ptr<T, D, C>& x, std::nullptr_t ) { return std::less_equal<typename value_ptr<T, D, C>::pointer>()( x.get(), nullptr ); }
-	template <class T, class D, class C> bool operator <= ( std::nullptr_t, const value_ptr<T, D, C>& y ) { return std::less_equal<typename value_ptr<T, D, C>::pointer>()( nullptr, y.get() ); }
-	template <class T, class D, class C> bool operator >( const value_ptr<T, D, C>& x, std::nullptr_t ) { return !( nullptr < x ); }
-	template <class T, class D, class C> bool operator > ( std::nullptr_t, const value_ptr<T, D, C>& y ) { return !( y < nullptr ); }
-	template <class T, class D, class C> bool operator >= ( const value_ptr<T, D, C>& x, std::nullptr_t ) { return !( x < nullptr ); }
-	template <class T, class D, class C> bool operator >= ( std::nullptr_t, const value_ptr<T, D, C>& y ) { return !( nullptr < y ); }
+	template <class T, class D, class C> bool operator == (std::nullptr_t, const value_ptr<T, D, C>& y) noexcept { return !y; }
+	template <class T, class D, class C> bool operator != (const value_ptr<T, D, C>& x, std::nullptr_t) noexcept { return (bool)x; }
+	template <class T, class D, class C> bool operator != (std::nullptr_t, const value_ptr<T, D, C>& y) noexcept { return (bool)y; }
+
+	template <class T, class D, class C> bool operator < (const value_ptr<T, D, C>& x, std::nullptr_t) { return std::less<typename value_ptr<T, D, C>::pointer>()(x.get(), nullptr); }
+	template <class T, class D, class C> bool operator < (std::nullptr_t, const value_ptr<T, D, C>& y) { return std::less<typename value_ptr<T, D, C>::pointer>()(nullptr, y.get()); }
+
+	template <class T, class D, class C> bool operator <= (const value_ptr<T, D, C>& x, std::nullptr_t) { return !(nullptr < x); }
+	template <class T, class D, class C> bool operator <= (std::nullptr_t, const value_ptr<T, D, C>& y) { return !(y < nullptr); }
+
+	template <class T, class D, class C> bool operator > (const value_ptr<T, D, C>& x, std::nullptr_t) { return nullptr < x; }
+	template <class T, class D, class C> bool operator > (std::nullptr_t, const value_ptr<T, D, C>& y) { return y < nullptr; }
+
+	template <class T, class D, class C> bool operator >= (const value_ptr<T, D, C>& x, std::nullptr_t) { return !(x < nullptr); }
+	template <class T, class D, class C> bool operator >= (std::nullptr_t, const value_ptr<T, D, C>& y) { return !(nullptr < y); }
 
 	// make value_ptr with default deleter and copier, analogous to std::make_unique
 	template<typename T, typename... Args>
@@ -410,6 +405,7 @@ namespace smart_ptr {
 
 #undef VALUE_PTR_CONSTEXPR
 #undef USE_EMPTY_BASE_OPTIMIZATION
+#undef VALUE_PTR_INCOMPLETE_VALUE
 
 #endif // !SMART_PTR_VALUE_PTR
 

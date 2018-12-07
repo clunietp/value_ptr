@@ -10,6 +10,9 @@
 #endif
 #endif
 
+// define to force use of the value_ptr incomplete base class
+// #define VALUE_PTR_FORCE_INCOMPLETE
+
 #include "../value_ptr.hpp"
 #include "test-pimpl.hpp"
 
@@ -38,11 +41,14 @@ void basic_tests() {
 	struct MyCopierStateful : MyCopier { int* ptr; };
 
 	// defined type size checks
-	static_assert( sizeof( value_ptr<A> ) == sizeof( A* ), "Size check fail" );
-	static_assert( sizeof( value_ptr<A, MyDeleter, MyCopier> ) == sizeof( A* ), "Size check fail" );
-	static_assert( sizeof( value_ptr<A> ) == sizeof( std::unique_ptr<A> ), "Size check fail" );
-	static_assert( sizeof( value_ptr<A, MyDeleter> ) == sizeof( std::unique_ptr<A,MyDeleter> ), "Size check fail" );
-	static_assert( sizeof( value_ptr<A, MyDeleterStateful> ) == sizeof( std::unique_ptr<A, MyDeleterStateful> ), "Size check fail" );
+	// size checks don't apply if we're forcing the incomplete base class via VALUE_PTR_FORCE_INCOMPLETE
+	#ifndef VALUE_PTR_FORCE_INCOMPLETE
+		static_assert( sizeof( value_ptr<A> ) == sizeof( A* ), "Size check fail" );
+		static_assert( sizeof( value_ptr<A, MyDeleter, MyCopier> ) == sizeof( A* ), "Size check fail" );
+		static_assert( sizeof( value_ptr<A> ) == sizeof( std::unique_ptr<A> ), "Size check fail" );
+		static_assert( sizeof( value_ptr<A, MyDeleter> ) == sizeof( std::unique_ptr<A,MyDeleter> ), "Size check fail" );
+		static_assert( sizeof( value_ptr<A, MyDeleterStateful> ) == sizeof( std::unique_ptr<A, MyDeleterStateful> ), "Size check fail" );
+	#endif
 
 	// construct, assign value_ptr, basic ops
 	{
@@ -70,14 +76,15 @@ void basic_tests() {
 	}
 
 	// make_value, nullptr_t construct/assign
-	{
+	{		
 		auto a = smart_ptr::make_value<A>(21);
 		assert( a );
 		assert(a->foo == 21);
 		a = nullptr;	// nullptr assign
-		assert( !a );
+		assert( !a );	// bool conversion
+		assert(a.get() == nullptr);
 		value_ptr<A> b{ nullptr };	// nullptr construct
-		assert( !b );
+		assert( !b );	// bool conversion
 		assert( b.get() == nullptr );
 	}
 }
@@ -89,10 +96,22 @@ void operator_tests() {
 	assert( nullptr == x );
 	assert( y == nullptr );
 	assert( nullptr == y );
+	
+	// gte
 	assert( x >= nullptr );
 	assert( nullptr >= x );
+	
+	// lte
 	assert( x <= nullptr );
 	assert( nullptr <= x );
+
+	// lt
+	assert(!(nullptr > x));
+	assert(!(x > nullptr));
+
+	// gt
+	assert(!(nullptr < x));
+	assert(!(x < nullptr));
 
 	x = new A{ 1 };
 	assert( x != nullptr );
@@ -137,7 +156,7 @@ void copier_tests() {
 		
 
 		{	// default deleter, user-provided copier
-			value_ptr<A, value_ptr<A>::deleter_type, MyCopierTest> p{ new A{ 5 },{},{ 2 } };
+			value_ptr<A, std::default_delete<A>, MyCopierTest> p{ new A{ 5 },{},{ 2 } };
 			assert( p.get_copier().baz == 2 );	// check state
 			auto p2 = p;	// do copy
 			assert( copier_called );
@@ -145,7 +164,7 @@ void copier_tests() {
 			assert( p2.get_copier().baz == 2 );
 
 			// swap with p
-			value_ptr<A, value_ptr<A>::deleter_type, MyCopierTest> other{ new A{ 7 },{},{ 10 } };
+			value_ptr<A, std::default_delete<A>, MyCopierTest> other{ new A{ 7 },{},{ 10 } };
 			other.swap( p );
 			assert( other->foo == 5 );
 			assert( other.get_copier().baz == 2 );
@@ -154,7 +173,7 @@ void copier_tests() {
 		}
 
 		// default construct with default deleter, MyCopierTest
-		value_ptr<A, value_ptr<A>::deleter_type, MyCopierTest> default_{};
+		value_ptr<A, std::default_delete<A>, MyCopierTest> default_{};
 		assert( !default_ );
 	}
 }
@@ -221,7 +240,7 @@ void incomplete_tests() {
 		static_assert( sizeof( value_ptr<U> ) == sizeof( std::unique_ptr<A> ) + fn_ptr_size * 2, "incomplete size check fail" );
 	}
 
-	// basic undefined class
+	// basic incomplete class
 	{
 		struct U;	// incomplete
 		value_ptr<U> u{};
@@ -230,7 +249,7 @@ void incomplete_tests() {
 		assert( !u2 );
 	}
 
-	// incomplete_foo defined entirely within another TU (test-pimpl)
+	// incomplete_foo defined entirely within another TU (test-pimpl), but we have visibility of the header
 	{
 		value_ptr<incomplete_foo> foo;
 		assert(use_incomplete_foo(foo, 33));	// create a foo, set value
@@ -417,7 +436,8 @@ void slice_protection() {
 	value_ptr<Base> b{new Base(3)};	// fine
 	b = nullptr;	// fine
 	
-	// b = new Derived( 1, 2 );	// expected: compilation failure due
+	// expected failures due to slicing
+	// b = new Derived( 1, 2 );	// expected: compilation failure
 	// b.reset( new Derived( 1, 2 ) );	// expected: compilation failure
 	// value_ptr<Base> a{ new Derived(1,2) };	// expected: compilation failure
 }
@@ -426,7 +446,7 @@ void unique_ptr_tests() {
 
 	// test implicit conversion to unique_ptr
 	{
-		auto test = []( std::unique_ptr<A>& ptr, int val ) { return ptr->foo == val; };
+		auto test = []( std::unique_ptr<A, value_ptr<A>::deleter_type>& ptr, int val ) { return ptr->foo == val; };
 		value_ptr<A> a{ new A{ 55 } };
 		assert( test( a, 55 ) );	// implicit conversion
 		assert( test( a.uptr(), 55 ) );	// ptr convenience method

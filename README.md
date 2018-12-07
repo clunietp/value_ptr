@@ -116,6 +116,7 @@ Unit Tests ![Travis CI](https://travis-ci.org/clunietp/value_ptr.svg?branch=mast
 
 Acknowledgements
 ---------
-http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2012/n3339.pdf , A Preliminary Proposal for a Deep-Copying Smart Pointer by Walter E Brown
+- http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2012/n3339.pdf , A Preliminary Proposal for a Deep-Copying Smart Pointer by Walter E Brown
+- Quuxplusone on codereview.stackexchange.com
 
 Issues/pull requests welcome
