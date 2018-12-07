@@ -3,6 +3,9 @@
 
 #include "../value_ptr.hpp"
 
+struct incomplete_foo;
+bool use_incomplete_foo( smart_ptr::value_ptr<incomplete_foo>&, int val );
+
 class widget {
 public:
 	widget();
@@ -27,7 +30,7 @@ public:
 	};
 
 	smart_ptr::value_ptr<impl, impl_deleter, impl_copier> pImpl_custom;
-};
+};	// widget
 
 #endif
 

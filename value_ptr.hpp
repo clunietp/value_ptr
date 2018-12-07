@@ -31,11 +31,6 @@ namespace smart_ptr {
 
 	namespace detail {
 
-		// void_t for c++11
-		//	from http://en.cppreference.com/w/cpp/types/void_t
-		template<typename... Ts> struct make_void { typedef void type; };
-		template<typename... Ts> using void_t = typename make_void<Ts...>::type;
-
 		// is_incomplete<T>, based on https://stackoverflow.com/a/39816909
 		template <class, class = void> struct is_incomplete : std::true_type {};
 		template <class T> struct is_incomplete<

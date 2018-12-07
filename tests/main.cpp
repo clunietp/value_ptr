@@ -230,6 +230,14 @@ void incomplete_tests() {
 		assert( !u2 );
 	}
 
+	// incomplete_foo defined entirely within another TU (test-pimpl)
+	{
+		value_ptr<incomplete_foo> foo;
+		assert(use_incomplete_foo(foo, 33));	// create a foo, set value
+		auto foo2 = foo;						// do a copy of incomplete
+		assert(use_incomplete_foo(foo2, 33));	// check copy's value
+	}
+
 	// pimpl example using test-pimpl
 	{
 		widget w{};
