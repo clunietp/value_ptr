@@ -22,6 +22,6 @@ matrix:
 
 script:
   - $CXX -v
-  - $CXX -std=c++11 -Wall -I. tests/main.cpp tests/test-pimpl.cpp -o main.t && ./main.t
+  - $CXX -std=c++11 -Wall -I. tests/main.cpp tests/test-pimpl.cpp tests/test-incomplete.cpp -o main.t && ./main.t
   - valgrind --leak-check=yes --error-exitcode=1 ./main.t
   
