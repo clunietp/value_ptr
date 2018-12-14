@@ -61,9 +61,10 @@ Without value_ptr
 
 with value_ptr:
 
+	#include "value_ptr_incomplete.hpp"
     struct U;	// undefined type
     class MyAwesomeClass {
-        smart_ptr::value_ptr<U> u;
+        smart_ptr::value_ptr_incomplete<U> u;
     };
 
     MyAwesomeClass a{};
@@ -78,8 +79,8 @@ Features
 - Compatible interface/convertible to std::unique_ptr<T>
 - Space efficient:  
     -  Utilizes empty base optimization to minimize memory footprint
-    -  defined types:  `sizeof( value_ptr<T> ) == sizeof(T*) == sizeof(std::unique_ptr<T>)`
-    -  undefined types:  `sizeof( value_ptr<T> ) == sizeof(T*)` + two function pointers
+    -  complete types:  `sizeof( value_ptr<T> ) == sizeof(T*) == sizeof(std::unique_ptr<T>)`
+    -  incomplete types:  `sizeof( value_ptr_incomplete<T> ) == sizeof(T*)` + two function pointers
 - Polymorphic copying:  
     -  Automatically detects/utilizes clone() member function
     -  Static assertion prevents object slicing if a user-defined copier not provided or clone member not found
@@ -93,7 +94,7 @@ Dependencies/Requirements
 
 Usage
 -----------------------
-- include "value_ptr.hpp" in your project
+- include "value_ptr.hpp" and/or "value_ptr_incomplete.hpp" in your project
 - Use value_ptr just like a unique_ptr
 - To leverage the automatic clone() detection feature, your base/derived classes should have a method with the signature:  `YourBaseClassHere* clone() const`
     - Alternatively, you can provide a functor or lambda which handles the copying.  See tests/main.cpp for examples

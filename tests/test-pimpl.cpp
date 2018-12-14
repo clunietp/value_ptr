@@ -1,27 +1,5 @@
 #include "test-pimpl.hpp"
 
-// define the foo
-struct incomplete_foo {
-	int val;
-};
-
-// should still be considered 'incomplete' here so that we don't get linker errors for value_ptr<incomplete_foo>&
-static_assert(smart_ptr::detail::is_incomplete<incomplete_foo>::value, "Incomplete type fail");
-
-// use/check the incomplete foo
-bool use_incomplete_foo(smart_ptr::value_ptr<incomplete_foo>& foo, int expected ) {
-	
-	// if !foo, create with 'expected', else check value vs expected
-	if (!foo) {
-		foo.reset(new incomplete_foo());
-		foo->val = expected;
-	}
-	else
-		return foo->val == expected;
-	
-	return true;
-}
-
 // define pimpl impl
 struct widget::impl {
 	int* val;
@@ -82,7 +60,7 @@ widget::impl* widget::impl_copier::operator()( const impl* ptr ) const {
 
 // pimpl widget ctor
 widget::widget()
-	: pImpl{ new widget::impl{ 42 } }
+	: pImpl{ new widget::impl{ 42 }, }
 	, pImpl_derived{ new impl_derived{ 42, 10 } }
 	, pImpl_custom{ nullptr }
 {

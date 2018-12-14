@@ -10,11 +10,10 @@
 #endif
 #endif
 
-// define to force use of the value_ptr incomplete base class
-// #define VALUE_PTR_FORCE_INCOMPLETE
-
 #include "../value_ptr.hpp"
+#include "../value_ptr_incomplete.hpp"
 #include "test-pimpl.hpp"
+#include "test-incomplete.hpp"
 
 namespace {
 	using namespace smart_ptr;
@@ -41,14 +40,11 @@ void basic_tests() {
 	struct MyCopierStateful : MyCopier { int* ptr; };
 
 	// defined type size checks
-	// size checks don't apply if we're forcing the incomplete base class via VALUE_PTR_FORCE_INCOMPLETE
-	#ifndef VALUE_PTR_FORCE_INCOMPLETE
-		static_assert( sizeof( value_ptr<A> ) == sizeof( A* ), "Size check fail" );
-		static_assert( sizeof( value_ptr<A, MyDeleter, MyCopier> ) == sizeof( A* ), "Size check fail" );
-		static_assert( sizeof( value_ptr<A> ) == sizeof( std::unique_ptr<A> ), "Size check fail" );
-		static_assert( sizeof( value_ptr<A, MyDeleter> ) == sizeof( std::unique_ptr<A,MyDeleter> ), "Size check fail" );
-		static_assert( sizeof( value_ptr<A, MyDeleterStateful> ) == sizeof( std::unique_ptr<A, MyDeleterStateful> ), "Size check fail" );
-	#endif
+	static_assert( sizeof( value_ptr<A> ) == sizeof( A* ), "Size check fail" );
+	static_assert( sizeof( value_ptr<A, MyDeleter, MyCopier> ) == sizeof( A* ), "Size check fail" );
+	static_assert( sizeof( value_ptr<A> ) == sizeof( std::unique_ptr<A> ), "Size check fail" );
+	static_assert( sizeof( value_ptr<A, MyDeleter> ) == sizeof( std::unique_ptr<A,MyDeleter> ), "Size check fail" );
+	static_assert( sizeof( value_ptr<A, MyDeleterStateful> ) == sizeof( std::unique_ptr<A, MyDeleterStateful> ), "Size check fail" );
 
 	// construct, assign value_ptr, basic ops
 	{
@@ -236,14 +232,14 @@ void incomplete_tests() {
 		struct U;
 		static constexpr auto fn_ptr_size = sizeof( void( *)( ) );	// get function pointer size
 
-		static_assert( sizeof( value_ptr<U> ) == sizeof( A* ) + fn_ptr_size * 2, "incomplete size check fail" );
-		static_assert( sizeof( value_ptr<U> ) == sizeof( std::unique_ptr<A> ) + fn_ptr_size * 2, "incomplete size check fail" );
+		static_assert( sizeof( value_ptr_incomplete<U> ) == sizeof( A* ) + fn_ptr_size * 2, "incomplete size check fail" );
+		static_assert( sizeof( value_ptr_incomplete<U> ) == sizeof( std::unique_ptr<A> ) + fn_ptr_size * 2, "incomplete size check fail" );
 	}
 
 	// basic incomplete class
 	{
 		struct U;	// incomplete
-		value_ptr<U> u{};
+		value_ptr_incomplete<U> u{};
 		assert( !u );
 		auto u2 = u;	// copy with incomplete
 		assert( !u2 );
@@ -251,10 +247,32 @@ void incomplete_tests() {
 
 	// incomplete_foo defined entirely within another TU (test-pimpl), but we have visibility of the header
 	{
-		value_ptr<incomplete_foo> foo;
+		value_ptr_incomplete<incomplete_foo> foo;
 		assert(use_incomplete_foo(foo, 33));	// create a foo, set value
 		auto foo2 = foo;						// do a copy of incomplete
 		assert(use_incomplete_foo(foo2, 33));	// check copy's value
+	}
+
+	// variable-sized value_ptr (old behavior) with incomplete/complete across TUs causing UB 
+	{
+		wrapped<Widget> foo, foo2;
+		foo.count = 33;
+		assert(get_wrapped_count(foo) == foo.count);
+
+		set_widget_i(foo, 55);
+		assert(get_widget_i(foo) == 55);
+		assert(foo.m);	// bool check
+
+		assert(!foo2.m);
+		swap_widgets(foo, foo2);
+		assert(!foo.m);
+		assert(foo2.m);
+
+		auto foo3 = foo2;	// copy after swap to ensure copy lambdas got swapped as well
+		assert(get_widget_i(foo3) == 55);
+
+		reset_widget(foo3);//reset
+		assert(!foo.m);	// bool check after reset
 	}
 
 	// pimpl example using test-pimpl

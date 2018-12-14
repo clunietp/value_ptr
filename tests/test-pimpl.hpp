@@ -1,22 +1,20 @@
 #ifndef TEST_PIMPL
 #define TEST_PIMPL
 
-#include "../value_ptr.hpp"
-
-struct incomplete_foo;
-bool use_incomplete_foo( smart_ptr::value_ptr<incomplete_foo>&, int val );
+#include "../value_ptr_incomplete.hpp"
 
 class widget {
 public:
 	widget();
+
+	struct impl;
+	smart_ptr::value_ptr_incomplete<impl> pImpl;
+	smart_ptr::value_ptr_incomplete<impl> pImpl_derived;
+
 	int get_meaning_of_life() const;
 
 	int get_meaning_of_life_derived() const;
 	bool is_clone_derived() const;
-
-	struct impl;
-	smart_ptr::value_ptr<impl> pImpl;
-	smart_ptr::value_ptr<impl> pImpl_derived;
 
 	// custom deleter and copier
 	struct impl_deleter {
